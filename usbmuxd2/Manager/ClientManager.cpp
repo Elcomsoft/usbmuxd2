@@ -6,6 +6,7 @@
 //
 
 #include "ClientManager.hpp"
+#include "MUXException.hpp"
 #include <libgeneral/macros.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -134,7 +135,7 @@ int ClientManager::accept_client(){
         retassure(errno == EINTR, "[CLIENTMANAGER] poll failed errno=%d (%s)",errno,strerror(errno));
         return -1;
     }
-    retassure(!(pfd[1].revents & POLLHUP), "graceful kill requested");
+    retcustomassure(MUXException_graceful_kill,!(pfd[1].revents & POLLHUP), "graceful kill requested");
     retassure(pfd[0].revents & POLLIN, "poll returned, but there is no POLLIN event on client");
     retassure((cfd = accept(_listenfd, (struct sockaddr *)&addr, &len))>=0, "accept() failed (%s)", strerror(errno));
     

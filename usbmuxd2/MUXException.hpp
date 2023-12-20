@@ -12,16 +12,11 @@
 
 namespace tihmstar {
 
-class MUXException : public tihmstar::exception {
-public:
-    using tihmstar::exception::exception;
-};
+EASY_BASE_EXCEPTION(MUXException);
 
-#pragma mark custom catch exceptions
-class MUXException_client_disconnected : public MUXException{
-    using MUXException::MUXException;
-};
-
+EASY_EXCEPTION(MUXException_client_disconnected,MUXException);
+EASY_EXCEPTION(MUXException_device_disconnected,MUXException);
+EASY_EXCEPTION(MUXException_graceful_kill,MUXException);
 };
 
 #endif /* MUXException_hpp */

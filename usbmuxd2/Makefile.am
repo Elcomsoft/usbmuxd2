@@ -12,6 +12,7 @@ usbmuxd_SOURCES = main.cpp \
 			log.c \
 			Client.cpp \
 			Muxer.cpp \
+            MUXException.cpp \
 			TCP.cpp \
 			sysconf/sysconf.cpp \
 			sysconf/preflight.cpp \

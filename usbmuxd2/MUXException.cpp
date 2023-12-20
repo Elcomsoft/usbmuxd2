@@ -6,3 +6,6 @@
 //
 
 #include "MUXException.hpp"
+
+
+EASY_BASE_EXCEPTION_DEF(MUXException);

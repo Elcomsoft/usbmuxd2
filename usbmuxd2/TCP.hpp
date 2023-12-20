@@ -51,6 +51,7 @@ class TCP : public tihmstar::Manager {
     void send_rst();
     void send_fin();
     size_t send_data(void *buf, size_t len);
+    void flush_data_nolock();
     void flush_data();
 
     

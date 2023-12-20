@@ -72,6 +72,9 @@ bool Client::loopEvent(){
     } catch (tihmstar::MUXException_client_disconnected &e){
         debug("Client disconnected, this is fine");
         throw;
+    } catch (tihmstar::MUXException_graceful_kill &e) {
+        debug("Client established connection, this is fine");
+        throw;
     } catch (tihmstar::exception &e) {
         error("failed to recv_data on client %d with error=%s code=%d",_fd,e.what(),e.code());
 #ifdef DEBUG
@@ -378,7 +381,7 @@ PLIST_CLIENT_CONNECTION_LOC:
         send_result(hdr->tag, RESULT_CONNREFUSED);
         return;
     }
-    reterror("graceful kill");
+    retcustomerror(MUXException_graceful_kill,"graceful kill");
 
 PLIST_CLIENT_LISTEN_LOC:
     send_result(hdr->tag, RESULT_OK);

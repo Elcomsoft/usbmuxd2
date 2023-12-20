@@ -240,14 +240,12 @@ cnt_label:
     return len;
 }
 
-void TCP::flush_data(){
+void TCP::flush_data_nolock(){
     uint32_t lseqAck = 0;
     uint32_t lseq = 0;
     char *bufstart = NULL;
     size_t buflen = 0;
     tcphdr tcp_header{};
-
-    std::unique_lock<std::mutex> ul(_lockStx);
 
     lseqAck = ((uint64_t)_stx.seqAcked + TCP::bufsize)%TCP::bufsize;
     lseq = ((uint64_t)_stx.seq + TCP::bufsize)%TCP::bufsize;
@@ -261,7 +259,7 @@ void TCP::flush_data(){
     tcp_header.th_dport = htons(_dPort);
     tcp_header.th_seq = htonl(_stx.seqAcked);
     tcp_header.th_ack = htonl(_stx.ack);
-    tcp_header.th_flags = TH_ACK | TH_FIN;
+    tcp_header.th_flags = TH_ACK;
     tcp_header.th_off = sizeof(tcphdr) / 4;
     tcp_header.th_win = htons(static_cast<std::uint16_t>(_stx.win >> 8));
 
@@ -270,6 +268,11 @@ void TCP::flush_data(){
           tcp_header.th_flags, buflen, _stx.inWin, _stx.inWin >> 8);
 
     _dev->send_packet(USBDevice::MUX_PROTO_TCP, bufstart, buflen, &tcp_header);
+}
+
+void TCP::flush_data(){
+    std::unique_lock<std::mutex> ul(_lockStx);
+    return flush_data_nolock();
 }
 
 #pragma mark public
@@ -336,17 +339,34 @@ void TCP::handle_input(tcphdr* tcp_header, uint8_t* payload, uint32_t payload_le
                     ul.lock();
                 }
                 
-                _stx.inWin = ntohs(tcp_header->th_win) << 8;
-                _stx.seqAcked = rAck; //update ACK on sent packets
-                _stx.ack += payload_len;
-                if (payload_len && !_canSendEvent.members()){
-                    /*
-                        We can avoid sending ACK here if we're gonna send data in next packet anyways
-                     */
-                    send_ack_nolock();
+                //update ACK on sent packets
+                bool isDuplicatePacket = false;
+                if (!(rAck >= _stx.seqAcked || (rAck <= _stx.seq && _stx.seq < _stx.seqAcked) || (rAck > _stx.seq && rAck <= static_cast<uint32_t>(_stx.seqAcked + unacked)))) {
+                    isDuplicatePacket = true;
                 }
                 
-                _canSendEvent.notifyAll();
+                if (!isDuplicatePacket) {
+                    uint32_t rInWin = ntohs(tcp_header->th_win) << 8;
+                    if (_stx.seqAcked != rAck || rInWin > _stx.inWin) {
+                        /*
+                            Remote window doesn't shrink.
+                            It's more likely that two packets with identical ack & seq got processed in reverse order.
+                            Normally not a problem, but the device doesn't like it when we tell it its own window size wrong
+                         */
+                        _stx.inWin = rInWin;
+                    }
+                    _stx.ack += payload_len;
+                    _stx.seqAcked = rAck;
+
+                    if (payload_len && !_canSendEvent.members()){
+                        /*
+                            We can avoid sending ACK here if we're gonna send data in next packet anyways
+                         */
+                        send_ack_nolock();
+                    }
+
+                    _canSendEvent.notifyAll();
+                }
             } else if (tcp_header->th_flags == TH_RST){
                 info("Connection reset by device, flags: %u sport=%u dport=%u", tcp_header->th_flags,_sPort,_dPort);
                 kill(__LINE__);
@@ -397,7 +417,7 @@ void TCP::connect(){
         _cli = nullptr; //free client
     });
 
-    info("Starting TCP connection clifd=%d",_pfd.fd);
+    debug("Starting TCP connection clifd=%d port=%d",_cli->_fd,_dPort);
 
     {
         uint64_t wevent = _connStateDidChange.getNextEvent();
@@ -405,7 +425,7 @@ void TCP::connect(){
         _connStateDidChange.waitForEvent(wevent);
         retassure(_connState == CONN_CONNECTED, "Failed to establish TCP connection clifd=%d _connState=%d",_pfd.fd,_connState);
     }
-    info("TCP Connected to device");
+    debug("TCP Connected to device");
     _cli->send_result(_cli->_connectTag, RESULT_OK);
 
     _pfd.fd = _cli->_fd; _cli->_fd = -1; //disown client, we take care of this fd now
